@@ -56,36 +56,159 @@ class Base(DeclarativeBase):
 def create_engine():
     """
     Creates and configures the async SQLAlchemy engine.
-
-    The engine is a FACTORY for database connections — it manages the
-    connection pool but does not itself hold an open connection.
-
-    Called once at application startup.
+    Supports both PostgreSQL (asyncpg) with connection pooling and SQLite (aiosqlite)
+    for zero-dependency standalone local development.
     """
     settings = get_settings()
 
-    engine = create_async_engine(
-        settings.database_url_async,
-        # Pool configuration
-        pool_size=settings.DB_POOL_SIZE,
-        max_overflow=settings.DB_MAX_OVERFLOW,
-        pool_timeout=settings.DB_POOL_TIMEOUT,
-        pool_pre_ping=True,   # Test connections before use (detects stale connections)
-        # Echo SQL queries to logger in debug mode
-        echo=settings.DEBUG,
-    )
+    if "sqlite" in settings.database_url_async:
+        engine = create_async_engine(
+            settings.database_url_async,
+            echo=settings.DEBUG,
+        )
+    else:
+        engine = create_async_engine(
+            settings.database_url_async,
+            pool_size=settings.DB_POOL_SIZE,
+            max_overflow=settings.DB_MAX_OVERFLOW,
+            pool_timeout=settings.DB_POOL_TIMEOUT,
+            pool_pre_ping=True,
+            echo=settings.DEBUG,
+        )
 
     logger.info(
         "SQLAlchemy engine created",
         extra={
             "event": "DB_ENGINE_CREATED",
-            "host": settings.POSTGRES_HOST,
-            "port": settings.POSTGRES_PORT,
-            "db": settings.POSTGRES_DB,
-            "pool_size": settings.DB_POOL_SIZE,
+            "db_url": settings.database_url_async.split("@")[-1] if "@" in settings.database_url_async else settings.database_url_async,
         },
     )
     return engine
+
+
+async def init_db_and_seed() -> None:
+    """
+    Initializes all database tables and seeds default manufacturing plant,
+    machines, and sensors if the database is currently uninitialized.
+    """
+    import datetime
+    from decimal import Decimal
+    from sqlalchemy import select
+    from app.models.plant import Plant
+    from app.models.machine import Machine
+    from app.models.sensor import MachineSensor
+
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with get_db_context() as db:
+        stmt = select(Plant).where(Plant.plant_id == "PLANT-A")
+        existing_plant = (await db.execute(stmt)).scalar_one_or_none()
+        if not existing_plant:
+            logger.info("Seeding initial plant, machines, and sensor configuration...")
+            plant = Plant(
+                plant_id="PLANT-A",
+                plant_name="Chennai Advanced Manufacturing Facility",
+                location="SIPCOT Industrial Complex, Irungattukottai",
+                city="Chennai",
+                country="India",
+                timezone="Asia/Kolkata",
+                is_active=True,
+            )
+            db.add(plant)
+            await db.flush()
+
+            machines_data = [
+                Machine(
+                    machine_id="CNC-001",
+                    machine_name="CNC Machining Center Alpha",
+                    machine_type="CNC",
+                    plant_id="PLANT-A",
+                    location="Bay-1, Zone-A",
+                    manufacturer="Haas Automation (Simulated)",
+                    model="VF-2SS",
+                    serial_number="SIM-CNC-001-2022",
+                    rated_rpm=Decimal("8000.0"),
+                    temperature_limit=Decimal("85.0"),
+                    vibration_limit=Decimal("7.5"),
+                    pressure_limit=Decimal("10.0"),
+                    power_limit=Decimal("22.0"),
+                    current_status="STOPPED",
+                    is_active=True,
+                ),
+                Machine(
+                    machine_id="CNC-002",
+                    machine_name="CNC Machining Center Beta",
+                    machine_type="CNC",
+                    plant_id="PLANT-A",
+                    location="Bay-1, Zone-B",
+                    manufacturer="Haas Automation (Simulated)",
+                    model="VF-4",
+                    serial_number="SIM-CNC-002-2021",
+                    rated_rpm=Decimal("6000.0"),
+                    temperature_limit=Decimal("82.0"),
+                    vibration_limit=Decimal("7.0"),
+                    pressure_limit=Decimal("10.0"),
+                    power_limit=Decimal("30.0"),
+                    current_status="STOPPED",
+                    is_active=True,
+                ),
+                Machine(
+                    machine_id="CNC-003",
+                    machine_name="CNC Machining Center Gamma",
+                    machine_type="CNC",
+                    plant_id="PLANT-A",
+                    location="Bay-2, Zone-A",
+                    manufacturer="DMG Mori (Simulated)",
+                    model="DMU 50",
+                    serial_number="SIM-CNC-003-2020",
+                    rated_rpm=Decimal("6000.0"),
+                    temperature_limit=Decimal("80.0"),
+                    vibration_limit=Decimal("7.0"),
+                    pressure_limit=Decimal("9.5"),
+                    power_limit=Decimal("25.0"),
+                    current_status="STOPPED",
+                    is_active=True,
+                ),
+                Machine(
+                    machine_id="PRESS-001",
+                    machine_name="Hydraulic Press Station 1",
+                    machine_type="PRESS",
+                    plant_id="PLANT-A",
+                    location="Bay-3, Zone-A",
+                    manufacturer="Schuler AG (Simulated)",
+                    model="MSP-500",
+                    serial_number="SIM-PRESS-001-2019",
+                    rated_rpm=Decimal("300.0"),
+                    temperature_limit=Decimal("70.0"),
+                    vibration_limit=Decimal("5.0"),
+                    pressure_limit=Decimal("250.0"),
+                    power_limit=Decimal("75.0"),
+                    current_status="STOPPED",
+                    is_active=True,
+                ),
+                Machine(
+                    machine_id="MILL-001",
+                    machine_name="Vertical Milling Machine 1",
+                    machine_type="MILL",
+                    plant_id="PLANT-A",
+                    location="Bay-2, Zone-B",
+                    manufacturer="Bridgeport (Simulated)",
+                    model="Series I",
+                    serial_number="SIM-MILL-001-2023",
+                    rated_rpm=Decimal("4000.0"),
+                    temperature_limit=Decimal("75.0"),
+                    vibration_limit=Decimal("6.5"),
+                    pressure_limit=Decimal("8.0"),
+                    power_limit=Decimal("15.0"),
+                    current_status="STOPPED",
+                    is_active=True,
+                ),
+            ]
+            db.add_all(machines_data)
+            await db.flush()
+            logger.info("Database initialized and seeded successfully.")
 
 
 # Module-level engine and session factory — created once at startup

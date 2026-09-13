@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.core.database import create_engine, close_engine
+from app.core.database import create_engine, close_engine, init_db_and_seed
 from app.core.logging import configure_logging, get_logger
 from app.mqtt.client import mqtt_subscriber
 from app.mqtt.handlers import set_event_loop, on_mqtt_message_received
@@ -46,8 +46,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Environment: {settings.APP_ENV} | Debug: {settings.DEBUG}")
     logger.info("=" * 60)
 
-    # 1. Initialize DB Engine
+    # 1. Initialize DB Engine & Auto-Seed Schema
     create_engine()
+    await init_db_and_seed()
 
     # 2. Hook MQTT client to async event loop
     loop = asyncio.get_running_loop()

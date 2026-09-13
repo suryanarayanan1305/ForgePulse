@@ -125,6 +125,9 @@ class Settings(BaseSettings):
         description="Comma-separated list of allowed CORS origins"
     )
 
+    # Set to True for zero-dependency standalone local run; False for PostgreSQL/Docker
+    USE_SQLITE: bool = Field(default=True, description="Use SQLite for local standalone development")
+
     # -------------------------------------------------------------------------
     # Computed Properties
     # These are derived at runtime — not read from env variables
@@ -138,14 +141,14 @@ class Settings(BaseSettings):
         If DATABASE_URL is set (e.g., by Render), parse and convert it.
         """
         if self.DATABASE_URL:
-            # Render provides: postgresql://user:pass@host/db
-            # Replace asyncpg scheme for sync usage:
             url = self.DATABASE_URL
             if url.startswith("postgres://"):
                 url = url.replace("postgres://", "postgresql://", 1)
             if url.startswith("postgresql+asyncpg://"):
                 url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
             return url
+        if self.USE_SQLITE:
+            return "sqlite:///./forgepulse.db"
         return (
             f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -155,7 +158,7 @@ class Settings(BaseSettings):
     @property
     def database_url_async(self) -> str:
         """
-        Async SQLAlchemy connection URL using asyncpg driver.
+        Async SQLAlchemy connection URL using asyncpg driver or aiosqlite.
         Used by the FastAPI application at runtime.
         """
         if self.DATABASE_URL:
@@ -165,6 +168,8 @@ class Settings(BaseSettings):
             elif url.startswith("postgresql://"):
                 url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
             return url
+        if self.USE_SQLITE:
+            return "sqlite+aiosqlite:///./forgepulse.db"
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"

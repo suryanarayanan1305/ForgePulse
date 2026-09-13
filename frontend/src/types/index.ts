@@ -1,8 +1,8 @@
 export interface Machine {
   machine_id: string;
-  machine_name: str;
-  machine_type: str;
-  plant_id: str;
+  machine_name: string;
+  machine_type: string;
+  plant_id: string;
   location: string | null;
   manufacturer: string | null;
   model: string | null;

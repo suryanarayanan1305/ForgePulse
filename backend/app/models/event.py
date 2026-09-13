@@ -2,8 +2,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,16 +12,14 @@ class MachineEvent(Base):
     __tablename__ = "machine_events"
 
     event_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     machine_id: Mapped[str] = mapped_column(String(50), ForeignKey("machines.machine_id"), nullable=False)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="INFO")
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    # JSONB for flexible, variable-structure event metadata
-    # NOTE: 'metadata' is reserved by SQLAlchemy's DeclarativeBase — renamed to event_metadata
-    # The actual PostgreSQL column is still named 'metadata' via the 'key' parameter
-    event_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    # JSON for flexible, variable-structure event metadata (cross-database compatible)
+    event_metadata: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

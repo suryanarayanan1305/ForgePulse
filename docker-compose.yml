@@ -1,0 +1,169 @@
+# ============================================================
+# FORGEPULSE — Docker Compose
+# ============================================================
+# Provides a complete local development environment:
+#   - postgres    → PostgreSQL 16 database
+#   - mosquitto   → Eclipse Mosquitto MQTT broker
+#   - backend     → FastAPI application (Milestone 4+)
+#   - simulator   → Machine + PLC simulator (Milestone 2+)
+#   - frontend    → React dashboard (Milestone 7+)
+#
+# Usage:
+#   docker compose up postgres mosquitto   # Milestone 1: DB + MQTT only
+#   docker compose up                      # Full stack (after all milestones)
+# ============================================================
+
+version: "3.9"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 — Primary Datastore
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: forgepulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: forgepulse
+      POSTGRES_USER: forgepulse_user
+      POSTGRES_PASSWORD: forgepulse_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persistent data volume — survives container restarts
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-initialize schema and seed data on first start
+      # PostgreSQL runs all .sql files in /docker-entrypoint-initdb.d/ alphabetically
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forgepulse_user -d forgepulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - forgepulse-network
+
+  # ---------------------------------------------------------------------------
+  # Eclipse Mosquitto — MQTT Broker
+  # Why Mosquitto?
+  #   - Standard open-source MQTT broker used in industrial IoT
+  #   - Easy to configure and run locally
+  #   - Production equivalent: HiveMQ Cloud, EMQX Cloud, AWS IoT Core
+  # ---------------------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: forgepulse-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT (plain TCP)
+      - "9001:9001"   # MQTT over WebSocket (for browser-based MQTT clients)
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t 'health/check' -m 'ping' -q 0 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - forgepulse-network
+
+  # ---------------------------------------------------------------------------
+  # ForgePulse Backend (FastAPI)
+  # Depends on postgres and mosquitto being healthy before starting
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: forgepulse-backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: forgepulse
+      POSTGRES_USER: forgepulse_user
+      POSTGRES_PASSWORD: forgepulse_pass
+      MQTT_BROKER_HOST: mosquitto
+      MQTT_BROKER_PORT: 1883
+      MQTT_CLIENT_ID: forgepulse-backend
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - forgepulse-network
+    profiles:
+      - full  # Only starts with: docker compose --profile full up
+
+  # ---------------------------------------------------------------------------
+  # Machine & PLC Simulator
+  # ---------------------------------------------------------------------------
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: forgepulse-simulator
+    restart: unless-stopped
+    environment:
+      MQTT_BROKER_HOST: mosquitto
+      MQTT_BROKER_PORT: 1883
+      MQTT_CLIENT_ID: forgepulse-simulator
+      MQTT_TOPIC_PREFIX: factory
+      PUBLISH_INTERVAL_SECONDS: 2
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - forgepulse-network
+    profiles:
+      - full
+
+  # ---------------------------------------------------------------------------
+  # React Frontend (served by Nginx in production-like mode)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: forgepulse-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - forgepulse-network
+    profiles:
+      - full
+
+# ---------------------------------------------------------------------------
+# Volumes (persistent storage)
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  mosquitto_data:
+    driver: local
+  mosquitto_logs:
+    driver: local
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  forgepulse-network:
+    driver: bridge

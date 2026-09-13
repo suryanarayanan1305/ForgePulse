@@ -62,8 +62,11 @@ def create_engine():
     settings = get_settings()
 
     if "sqlite" in settings.database_url_async:
+        from sqlalchemy.pool import StaticPool
         engine = create_async_engine(
             settings.database_url_async,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
             echo=settings.DEBUG,
         )
     else:

@@ -3,40 +3,29 @@
 # ================================
 
 # Web Framework & Server
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
+fastapi>=0.115.0
+uvicorn>=0.30.0
 
 # Data Validation
-pydantic==2.9.2
-pydantic-settings==2.5.2
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
 
 # Database
-sqlalchemy==2.0.35
-asyncpg==0.29.0        # Async PostgreSQL driver (production)
-psycopg2-binary==2.9.9 # Sync PostgreSQL driver (Alembic migrations)
-alembic==1.13.3
+sqlalchemy>=2.0.0
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.0
+aiosqlite>=0.20.0
+alembic>=1.13.0
 
-# MQTT
-paho-mqtt==1.6.1
+# MQTT & Edge Gateway
+paho-mqtt>=1.6.1
 
 # Analytics & ML
-pandas==2.2.3
-numpy==1.26.4
-scikit-learn==1.5.2
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
 
-# HTTP Client (for inter-service calls if needed)
-httpx==0.27.2
-
-# Logging
-python-json-logger==2.0.7
-
-# Environment
-python-dotenv==1.0.1
-
-# Testing
-pytest==8.3.3
-pytest-asyncio==0.24.0
-httpx==0.27.2           # For FastAPI TestClient async support
-
-# Development utilities
-python-multipart==0.0.9  # Form data support
+# Utilities
+httpx>=0.27.0
+python-dotenv>=1.0.0
+python-json-logger>=2.0.0

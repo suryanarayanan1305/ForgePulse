@@ -37,21 +37,29 @@ class MQTTSubscriberClient:
 
     def start(self) -> None:
         """Initializes and connects MQTT client in a background network loop."""
-        self.client = mqtt.Client(
-            client_id=self.settings.MQTT_CLIENT_ID,
-            clean_session=False,  # Persistent session for QoS 1
-            protocol=mqtt.MQTTv311,
-        )
-
-        if self.settings.MQTT_USERNAME and self.settings.MQTT_PASSWORD:
-            self.client.username_pw_set(self.settings.MQTT_USERNAME, self.settings.MQTT_PASSWORD)
-
-        self.client.on_connect = self._on_connect
-        self.client.on_disconnect = self._on_disconnect
-        self.client.on_message = self._on_message
-
-        logger.info(f"Connecting MQTT subscriber to {self.settings.MQTT_BROKER_HOST}:{self.settings.MQTT_BROKER_PORT}")
         try:
+            # Handle Paho MQTT 2.x vs 1.x signature compatibility
+            try:
+                self.client = mqtt.Client(
+                    mqtt.CallbackAPIVersion.VERSION1,
+                    client_id=self.settings.MQTT_CLIENT_ID,
+                    clean_session=True,
+                )
+            except AttributeError:
+                self.client = mqtt.Client(
+                    client_id=self.settings.MQTT_CLIENT_ID,
+                    clean_session=True,
+                    protocol=mqtt.MQTTv311,
+                )
+
+            if self.settings.MQTT_USERNAME and self.settings.MQTT_PASSWORD:
+                self.client.username_pw_set(self.settings.MQTT_USERNAME, self.settings.MQTT_PASSWORD)
+
+            self.client.on_connect = self._on_connect
+            self.client.on_disconnect = self._on_disconnect
+            self.client.on_message = self._on_message
+
+            logger.info(f"Connecting MQTT subscriber to {self.settings.MQTT_BROKER_HOST}:{self.settings.MQTT_BROKER_PORT}")
             self.client.connect_async(
                 host=self.settings.MQTT_BROKER_HOST,
                 port=self.settings.MQTT_BROKER_PORT,
@@ -59,7 +67,7 @@ class MQTTSubscriberClient:
             )
             self.client.loop_start()
         except Exception as e:
-            logger.warning(f"Initial MQTT broker connection could not be established immediately: {e}. Will auto-retry.")
+            logger.warning(f"MQTT subscriber startup deferred: {e}")
 
     def stop(self) -> None:
         """Stops network loop and disconnects cleanly."""

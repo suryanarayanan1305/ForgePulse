@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
-from app.schemas.telemetry import TelemetryResponse
+from app.schemas.telemetry import TelemetryResponse, TelemetryIngest
 from app.services.telemetry_service import telemetry_service
 
 router = APIRouter(prefix="/machines/{machine_id}/telemetry", tags=["Telemetry"])

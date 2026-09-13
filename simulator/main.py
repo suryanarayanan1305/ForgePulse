@@ -104,7 +104,11 @@ class SimulatorOrchestrator:
         self._plc_map = create_plc_fleet(self._machine_fleet)
         logger.info(f"Software PLC fleet initialized: {list(self._plc_map.keys())}")
 
-        # Connect MQTT publisher
+        # HTTP Fallback client for direct edge gateway ingestion
+        self._use_http_fallback = False
+        self._api_base_url = get_env("BACKEND_API_URL", "http://localhost:8000/api/v1")
+
+        # Connect MQTT publisher (or switch to HTTP fallback)
         self._publisher = MQTTPublisher(
             broker_host=self.broker_host,
             broker_port=self.broker_port,
@@ -115,14 +119,16 @@ class SimulatorOrchestrator:
             password=self.mqtt_password,
         )
 
-        connected = self._publisher.connect(max_retries=20, retry_delay=3.0)
+        connected = self._publisher.connect(max_retries=3, retry_delay=1.0)
         if not connected:
-            logger.error("Failed to connect to MQTT broker. Exiting.")
-            return False
+            self._use_http_fallback = True
+            logger.warning(
+                f"No MQTT broker on {self.broker_host}:{self.broker_port}. "
+                f"Operating in HTTP Direct Edge Gateway mode -> {self._api_base_url}/telemetry/ingest"
+            )
+        else:
+            logger.info(f"MQTT publisher connected to {self.broker_host}:{self.broker_port}")
 
-        logger.info(
-            f"MQTT publisher connected to {self.broker_host}:{self.broker_port}"
-        )
         logger.info(
             f"Simulation interval: {self.publish_interval}s "
             f"({5 / self.publish_interval:.1f} Hz per machine × 5 machines)"
@@ -131,15 +137,15 @@ class SimulatorOrchestrator:
 
     def run(self) -> None:
         """Main simulation loop."""
+        import urllib.request
         self._running = True
         last_tick_time = time.time()
 
-        logger.info("Simulation loop started. Publishing telemetry...")
+        logger.info(f"Simulation loop started. Streaming telemetry ({'HTTP Gateway' if self._use_http_fallback else 'MQTT'})...")
 
         while self._running:
             loop_start = time.time()
 
-            # Calculate actual dt (time since last tick)
             dt = loop_start - last_tick_time
             last_tick_time = loop_start
             self._tick_count += 1
@@ -163,19 +169,28 @@ class SimulatorOrchestrator:
                     snapshot = machine_sim.get_snapshot()
                     scan_result = plc.scan(snapshot)
 
-                    # Step 3: Build MQTT payload
+                    # Step 3: Build telemetry payload
                     payload = plc.build_telemetry_payload(
                         scan_result,
                         production_count=machine_sim.state.production_count
                     )
 
-                    # Step 4: Publish telemetry
-                    self._publisher.publish_telemetry(plant_id, machine_id, payload)
-
-                    # Step 5: Publish retained status (so new subscribers see current state)
-                    self._publisher.publish_status(
-                        plant_id, machine_id, scan_result.machine_status
-                    )
+                    # Step 4: Stream telemetry (via MQTT or direct HTTP Edge Ingestion)
+                    if self._use_http_fallback:
+                        try:
+                            req = urllib.request.Request(
+                                f"{self._api_base_url}/telemetry/ingest",
+                                data=json.dumps(payload).encode('utf-8'),
+                                headers={'Content-Type': 'application/json'},
+                                method='POST'
+                            )
+                            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                                pass
+                        except Exception as he:
+                            logger.debug(f"HTTP edge publish error: {he}")
+                    else:
+                        self._publisher.publish_telemetry(plant_id, machine_id, payload)
+                        self._publisher.publish_status(plant_id, machine_id, scan_result.machine_status)
 
                     # Log a summary line at info level (not every message to avoid noise)
                     if self._tick_count % 10 == 0:

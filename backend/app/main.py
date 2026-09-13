@@ -9,6 +9,14 @@ RESPONSIBILITIES:
   4. Exposes OpenAPI documentation at /docs and /redoc
 """
 
+import sys
+from pathlib import Path
+
+# Ensure root project directory is in sys.path for simulator module imports
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI

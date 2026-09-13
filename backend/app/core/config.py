@@ -127,6 +127,7 @@ class Settings(BaseSettings):
 
     # Set to True for zero-dependency standalone local run; False for PostgreSQL/Docker
     USE_SQLITE: bool = Field(default=True, description="Use SQLite for local standalone development")
+    ENABLE_INTERNAL_SIMULATOR: bool = Field(default=True, description="Run internal machine physics simulation in background for live demos")
 
     # -------------------------------------------------------------------------
     # Computed Properties

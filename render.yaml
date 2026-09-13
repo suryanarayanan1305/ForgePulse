@@ -1,0 +1,43 @@
+# Render Blueprint: Zero-Cost Cloud Deployment for FORGEPULSE
+services:
+  # ---------------------------------------------------------------------------
+  # 1. FastAPI Industrial Backend API
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: forgepulse-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: false
+      - key: USE_SQLITE
+        value: true
+      - key: ENABLE_INTERNAL_SIMULATOR
+        value: true
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+  # ---------------------------------------------------------------------------
+  # 2. React Industrial Operations Dashboard (Static Site)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: forgepulse-dashboard
+    runtime: static
+    plan: free
+    region: oregon
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    routes:
+      - type: rewrite
+        source: "/*"
+        destination: "/index.html"
+    envVars:
+      - key: NODE_VERSION
+        value: 20.12.0

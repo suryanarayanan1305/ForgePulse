@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaultScenario, Machine } from '../types';
 import { api } from '../api/client';
-import { X, ShieldAlert, Zap, Flame, Activity, AlertOctagon, PowerOff, CheckCircle2 } from 'lucide-react';
+import { X, ShieldAlert, CheckCircle2, AlertTriangle, RotateCcw, Zap } from 'lucide-react';
 
 interface FaultInjectorModalProps {
   isOpen: boolean;
@@ -9,6 +9,15 @@ interface FaultInjectorModalProps {
   onClose: () => void;
   onFaultInjected?: () => void;
 }
+
+const FAULT_ICONS: Record<string, string> = {
+  OVERHEATING: '🌡️',
+  HIGH_VIBRATION: '〰️',
+  PRESSURE_SPIKE: '🔺',
+  MOTOR_OVERLOAD: '⚡',
+  MACHINE_STOP: '⛔',
+  BEARING_FAULT: '🔩',
+};
 
 export const FaultInjectorModal: React.FC<FaultInjectorModalProps> = ({
   isOpen,
@@ -20,7 +29,7 @@ export const FaultInjectorModal: React.FC<FaultInjectorModalProps> = ({
   const [selectedMachine, setSelectedMachine] = useState<string>('');
   const [selectedFault, setSelectedFault] = useState<string>('');
   const [injecting, setInjecting] = useState<boolean>(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     if (machines.length > 0 && !selectedMachine) {
@@ -30,18 +39,12 @@ export const FaultInjectorModal: React.FC<FaultInjectorModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const fetchScenarios = async () => {
-      try {
-        const list = await api.getFaultScenarios();
+    api.getFaultScenarios()
+      .then((list) => {
         setScenarios(list);
-        if (list.length > 0 && !selectedFault) {
-          setSelectedFault(list[0].fault_name);
-        }
-      } catch (err) {
-        console.error('Failed to load scenarios', err);
-      }
-    };
-    fetchScenarios();
+        if (list.length > 0 && !selectedFault) setSelectedFault(list[0].fault_name);
+      })
+      .catch(console.error);
   }, [isOpen, selectedFault]);
 
   if (!isOpen) return null;
@@ -51,11 +54,14 @@ export const FaultInjectorModal: React.FC<FaultInjectorModalProps> = ({
     try {
       setInjecting(true);
       setFeedback(null);
-      const res = await api.injectFault(selectedMachine, selectedFault);
-      setFeedback(`Injected ${selectedFault} on ${selectedMachine}! Sensor metrics will alter in 1-2s.`);
-      if (onFaultInjected) onFaultInjected();
+      await api.injectFault(selectedMachine, selectedFault);
+      setFeedback({
+        type: 'success',
+        message: `✓ ${selectedFault} injected on ${selectedMachine}. Sensor metrics will deviate within 2–4 seconds.`,
+      });
+      onFaultInjected?.();
     } catch (err: any) {
-      setFeedback(`Injection failed: ${err.message}`);
+      setFeedback({ type: 'error', message: `Injection failed: ${err.message}` });
     } finally {
       setInjecting(false);
     }
@@ -66,52 +72,68 @@ export const FaultInjectorModal: React.FC<FaultInjectorModalProps> = ({
     try {
       setInjecting(true);
       await api.clearFault(selectedMachine);
-      setFeedback(`Cleared faults on ${selectedMachine}. Machine returning to nominal baseline.`);
-      if (onFaultInjected) onFaultInjected();
+      setFeedback({
+        type: 'success',
+        message: `✓ Faults cleared on ${selectedMachine}. Machine returning to nominal baseline.`,
+      });
+      onFaultInjected?.();
     } catch (err: any) {
-      setFeedback(`Clear failed: ${err.message}`);
+      setFeedback({ type: 'error', message: `Clear failed: ${err.message}` });
     } finally {
       setInjecting(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl p-6 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-        >
-          <X className="w-5 h-5" />
-        </button>
+  const selectedScenario = scenarios.find((s) => s.fault_name === selectedFault);
 
-        <div className="flex items-center gap-3 pb-4 border-b border-slate-800">
-          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white">Live Fault Injection Console</h2>
-            <p className="text-xs text-slate-400">
-              Demonstrate closed-loop anomaly detection, alerting & health penalty pipeline
-            </p>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+      <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-2xl shadow-2xl shadow-black/50 overflow-hidden">
+        {/* Hazard Header */}
+        <div className="relative px-6 py-5 border-b border-amber-500/15 bg-amber-500/[0.04] overflow-hidden">
+          {/* Hazard stripe decoration */}
+          <div
+            className="absolute inset-0 opacity-[0.03]"
+            style={{
+              backgroundImage: 'repeating-linear-gradient(-45deg, #f59e0b 0, #f59e0b 10px, transparent 10px, transparent 20px)',
+            }}
+          />
+          <div className="relative flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/20">
+                <ShieldAlert className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white">Live Fault Injection Console</h2>
+                <p className="text-[11px] text-amber-500/70 mt-0.5">
+                  Triggers deterministic failure scenarios on the physics simulation engine
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/[0.06] transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        <div className="my-5 space-y-4">
-          {/* Target Machine Selection */}
+        <div className="px-6 py-5 space-y-5">
+          {/* Machine Selection */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Target Machine:
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+              Target Machine
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {machines.map((m) => (
                 <button
                   key={m.machine_id}
                   onClick={() => setSelectedMachine(m.machine_id)}
-                  className={`p-2.5 rounded-lg border text-xs font-mono font-bold transition text-center ${
+                  className={`p-2 rounded-xl border text-[11px] font-mono font-bold transition-all ${
                     selectedMachine === m.machine_id
-                      ? 'bg-sky-500/20 border-sky-500 text-sky-300 ring-1 ring-sky-500/50'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                      ? 'bg-sky-500/15 border-sky-500/60 text-sky-300 ring-1 ring-sky-500/30'
+                      : 'bg-white/[0.02] border-white/[0.06] text-slate-400 hover:border-sky-500/25 hover:text-slate-200'
                   }`}
                 >
                   {m.machine_id}
@@ -122,56 +144,85 @@ export const FaultInjectorModal: React.FC<FaultInjectorModalProps> = ({
 
           {/* Fault Scenario Selection */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Failure Scenario:
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+              Failure Scenario
             </label>
-            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-              {scenarios.map((sc) => (
-                <div
-                  key={sc.fault_name}
-                  onClick={() => setSelectedFault(sc.fault_name)}
-                  className={`p-3 rounded-xl border cursor-pointer transition ${
-                    selectedFault === sc.fault_name
-                      ? 'bg-amber-500/15 border-amber-500/80 text-white ring-1 ring-amber-500/30'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-xs text-amber-400 font-mono">{sc.display_name}</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                      Intensity: {(sc.intensity * 100).toFixed(0)}%
-                    </span>
+            <div className="space-y-1.5 max-h-56 overflow-y-auto scrollbar-thin pr-1">
+              {scenarios.map((sc) => {
+                const isActive = selectedFault === sc.fault_name;
+                const pct = Math.round(sc.intensity * 100);
+                return (
+                  <div
+                    key={sc.fault_name}
+                    onClick={() => setSelectedFault(sc.fault_name)}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      isActive
+                        ? 'bg-amber-500/10 border-amber-500/40 ring-1 ring-amber-500/20'
+                        : 'bg-white/[0.02] border-white/[0.05] hover:border-amber-500/20'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{FAULT_ICONS[sc.fault_name] ?? '⚠️'}</span>
+                        <span className="font-semibold text-[12px] text-amber-300">{sc.display_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-500">Intensity</span>
+                        <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${pct > 75 ? 'bg-rose-400' : pct > 50 ? 'bg-amber-400' : 'bg-sky-400'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">{pct}%</span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-snug">{sc.description}</p>
+                    {isActive && sc.expected_alerts.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {sc.expected_alerts.map((a) => (
+                          <span key={a} className="text-[9px] px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono">
+                            {a}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">{sc.description}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          {/* Status Feedback */}
+          {/* Feedback */}
           {feedback && (
-            <div className="p-3 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-300 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />
-              <span>{feedback}</span>
+            <div className={`flex items-start gap-2 p-3 rounded-xl border text-[11px] ${
+              feedback.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+            }`}>
+              <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>{feedback.message}</span>
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+          {/* Actions */}
+          <div className="flex items-center justify-between pt-2 border-t border-white/[0.05]">
             <button
               onClick={handleClear}
               disabled={injecting}
-              className="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-white/[0.04] hover:bg-white/[0.07] text-slate-300 border border-white/[0.07] transition disabled:opacity-50"
             >
+              <RotateCcw className="w-3.5 h-3.5" />
               Clear Faults (Reset)
             </button>
 
             <button
               onClick={handleInject}
               disabled={injecting || !selectedMachine || !selectedFault}
-              className="px-5 py-2 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono transition shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {injecting ? 'Injecting...' : 'TRIGGER INJECTION NOW'}
+              <Zap className="w-3.5 h-3.5" />
+              {injecting ? 'Injecting…' : 'Trigger Injection'}
             </button>
           </div>
         </div>

@@ -78,8 +78,11 @@ async def _background_simulation_loop():
                 validated = TelemetryIngest.model_validate(payload_dict)
                 async with get_db_context() as db:
                     await telemetry_service.process_and_persist_telemetry(db, validated)
+                import time
+                mqtt_subscriber.messages_received += 1
+                mqtt_subscriber.last_message_time = time.time()
         except Exception as e:
-            logger.debug(f"Simulation worker error: {e}")
+            logger.warning(f"Simulation worker error: {e}")
         await asyncio.sleep(2.0)
 
 

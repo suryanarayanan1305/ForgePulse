@@ -211,7 +211,35 @@ async def init_db_and_seed() -> None:
             ]
             db.add_all(machines_data)
             await db.flush()
-            logger.info("Database initialized and seeded successfully.")
+
+            # Seed 20 historical telemetry readings per machine so charts render immediately
+            import random
+            from app.models.telemetry import Telemetry
+            base_time = datetime.datetime.now(datetime.timezone.utc)
+            initial_telemetry = []
+            for m in machines_data:
+                for i in range(25, 0, -1):
+                    t_time = base_time - datetime.timedelta(seconds=i * 2)
+                    temp_base = 32.0 if m.machine_id in ("CNC-001", "CNC-002", "MILL-001") else 28.0
+                    vib_base = 0.65 if m.machine_id in ("CNC-001", "CNC-002", "MILL-001") else 0.45
+                    initial_telemetry.append(
+                        Telemetry(
+                            machine_id=m.machine_id,
+                            plant_id="PLANT-A",
+                            timestamp=t_time,
+                            temperature=Decimal(str(round(temp_base + random.uniform(-0.5, 0.5), 2))),
+                            pressure=Decimal("5.2"),
+                            vibration=Decimal(str(round(vib_base + random.uniform(-0.05, 0.05), 3))),
+                            rpm=Decimal("3200.0") if m.machine_id in ("CNC-001", "CNC-002", "MILL-001") else Decimal("0.0"),
+                            power_consumption=Decimal("8.5") if m.machine_id in ("CNC-001", "CNC-002", "MILL-001") else Decimal("0.0"),
+                            production_count=100 - i,
+                            machine_status="RUNNING" if m.machine_id in ("CNC-001", "CNC-002", "MILL-001") else "STOPPED",
+                            is_anomaly=False,
+                        )
+                    )
+            db.add_all(initial_telemetry)
+            await db.flush()
+            logger.info("Database initialized and seeded successfully with baseline telemetry.")
 
 
 # Module-level engine and session factory — created once at startup
